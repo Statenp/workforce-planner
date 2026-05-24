@@ -48,10 +48,6 @@ function App() {
           <p className="eyebrow">Labor forecasting</p>
           <h1>Workforce Planner</h1>
         </div>
-        <p className="subtitle">
-          Forecast labor metrics by location and department — includes a rolling{' '}
-          {planner.forecastHorizonWeeks}-week outlook through {planner.forecastHorizonEnd}.
-        </p>
       </header>
 
       <div className="layout">

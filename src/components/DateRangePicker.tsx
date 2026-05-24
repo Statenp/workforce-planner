@@ -3,7 +3,7 @@ interface DateRangePickerProps {
   end: string;
   onChange: (start: string, end: string) => void;
   presets: {
-    last90: { start: string; end: string };
+    currentWeek: { start: string; end: string };
     ytd: { start: string; end: string };
     forecast5w: { start: string; end: string };
   };
@@ -43,8 +43,8 @@ export function DateRangePicker({
         />
       </div>
       <div className="preset-row">
-        <button type="button" className="chip" onClick={() => onChange(presets.last90.start, presets.last90.end)}>
-          Last 90 days
+        <button type="button" className="chip" onClick={() => onChange(presets.currentWeek.start, presets.currentWeek.end)}>
+          Current week
         </button>
         <button type="button" className="chip" onClick={() => onChange(presets.ytd.start, presets.ytd.end)}>
           Year to date

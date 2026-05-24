@@ -1,4 +1,4 @@
-import { addWeeks, format, parseISO, startOfDay } from 'date-fns';
+import { addWeeks, endOfWeek, format, parseISO, startOfDay, startOfWeek } from 'date-fns';
 
 export const FORECAST_HORIZON_WEEKS = 5;
 
@@ -20,6 +20,15 @@ export function getFiveWeekForecastRange(fromDate: Date = new Date()) {
   return {
     start: getForecastHorizonStart(fromDate),
     end: getForecastHorizonEnd(fromDate),
+  };
+}
+
+/** Monday–Sunday week containing the given date. */
+export function getCurrentWeekRange(fromDate: Date = new Date()) {
+  const weekOpts = { weekStartsOn: 1 as const };
+  return {
+    start: format(startOfWeek(fromDate, weekOpts), 'yyyy-MM-dd'),
+    end: format(endOfWeek(fromDate, weekOpts), 'yyyy-MM-dd'),
   };
 }
 

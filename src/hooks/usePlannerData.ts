@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { addDays, format, parseISO, subMonths } from 'date-fns';
+import { addDays, format, parseISO } from 'date-fns';
 import {
   FORECAST_HORIZON_WEEKS,
-  getFiveWeekForecastRange,
+  getCurrentWeekRange,
   getForecastHorizonEnd,
   getTodayString,
   withForecastHorizon,
@@ -33,7 +33,7 @@ const DEFAULT_FORECAST_GROUPS: ForecastGroup[] = [
 ];
 
 function defaultRange() {
-  return getFiveWeekForecastRange();
+  return getCurrentWeekRange();
 }
 
 export function usePlannerData() {
@@ -77,11 +77,11 @@ export function usePlannerData() {
 
   const displayRange = useMemo(() => {
     if (!focusPeriodKey) {
-      return { start: rangeStart, end: dataRangeEnd };
+      return { start: rangeStart, end: rangeEnd };
     }
     const focusGranularity = parentGranularity(granularity) ?? granularity;
     return periodBounds(focusPeriodKey, focusGranularity);
-  }, [focusPeriodKey, granularity, rangeStart, dataRangeEnd]);
+  }, [focusPeriodKey, granularity, rangeStart, rangeEnd]);
 
   const periods: PeriodBucket[] = useMemo(
     () => aggregateToPeriods(filteredRecords, granularity, displayRange.start, displayRange.end),
@@ -217,10 +217,7 @@ export function usePlannerData() {
 
   const quickPresets = useMemo(
     () => ({
-      last90: {
-        start: format(subMonths(new Date(), 3), 'yyyy-MM-dd'),
-        end: today,
-      },
+      currentWeek: getCurrentWeekRange(),
       ytd: {
         start: format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd'),
         end: today,
