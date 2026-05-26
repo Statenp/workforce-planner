@@ -1,19 +1,27 @@
+import type { DateRangePresetId } from '@/hooks/usePlannerData';
+
+type PresetKey = Exclude<DateRangePresetId, 'custom'>;
+
 interface DateRangePickerProps {
   start: string;
   end: string;
-  onChange: (start: string, end: string) => void;
-  presets: {
-    currentWeek: { start: string; end: string };
-    ytd: { start: string; end: string };
-    forecast5w: { start: string; end: string };
-  };
+  activePreset: DateRangePresetId;
+  onChange: (start: string, end: string, presetId?: DateRangePresetId) => void;
+  presets: Record<PresetKey, { start: string; end: string }>;
   forecastHorizonEnd: string;
   forecastHorizonWeeks: number;
 }
 
+const PRESET_OPTIONS: { id: PresetKey; label: string }[] = [
+  { id: 'currentWeek', label: 'Current week' },
+  { id: 'ytd', label: 'Year to date' },
+  { id: 'forecast5w', label: '5 Week Out Forecast' },
+];
+
 export function DateRangePicker({
   start,
   end,
+  activePreset,
   onChange,
   presets,
   forecastHorizonEnd,
@@ -30,7 +38,7 @@ export function DateRangePicker({
           type="date"
           value={start}
           max={end}
-          onChange={(e) => onChange(e.target.value, end)}
+          onChange={(e) => onChange(e.target.value, end, 'custom')}
           aria-label="Range start"
         />
         <span className="date-sep">to</span>
@@ -38,24 +46,22 @@ export function DateRangePicker({
           type="date"
           value={end}
           min={start}
-          onChange={(e) => onChange(start, e.target.value)}
+          onChange={(e) => onChange(start, e.target.value, 'custom')}
           aria-label="Range end"
         />
       </div>
       <div className="preset-row">
-        <button type="button" className="chip" onClick={() => onChange(presets.currentWeek.start, presets.currentWeek.end)}>
-          Current week
-        </button>
-        <button type="button" className="chip" onClick={() => onChange(presets.ytd.start, presets.ytd.end)}>
-          Year to date
-        </button>
-        <button
-          type="button"
-          className="chip accent"
-          onClick={() => onChange(presets.forecast5w.start, presets.forecast5w.end)}
-        >
-          5 Week Out Forecast
-        </button>
+        {PRESET_OPTIONS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            className={`chip ${activePreset === id ? 'active' : ''}`}
+            aria-pressed={activePreset === id}
+            onClick={() => onChange(presets[id].start, presets[id].end, id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
     </div>
   );

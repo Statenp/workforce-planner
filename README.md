@@ -1,20 +1,15 @@
 # Workforce Planner
 
-Labor forecasting application with a modern UI for exploring and editing workforce metrics across locations and departments.
+Labor forecasting application with a **Next.js** frontend and **Express** API backend.
 
-## Features
+## Stack
 
-- **Custom date range** picker with quick presets
-- **Day / week / month** views with drill-down and drill-up navigation
-- **Metric-level data** aggregated from daily records (lowest granularity)
-- **Series**: actuals, last-year actuals, budget, and forecast
-- **Line chart** (Recharts) with one line per metric (per visible series)
-- **Public holidays** marked on the chart (US federal holidays by default)
-- **Numeric table** with period totals
-- **5-week forecast horizon** — rolling outlook from today with projected budget/forecast (no future actuals)
-- **Forecast editing** by percent or numeric delta, with proportional proration to underlying days
-- **Forecast groups** for bundled metric selection
-- **Filters** by store(s) and department(s)
+| Layer | Technology |
+|--------|------------|
+| Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
+| Charts | Recharts |
+| Backend | Express 4, TypeScript (`server/`) |
+| Storage | JSON file (`server/data/store.json`) |
 
 ## Run locally
 
@@ -23,18 +18,36 @@ Requires [Node.js](https://nodejs.org/) 20+.
 ```bash
 cd workforce-planner
 npm install
+npm install --prefix server
 npm run dev
 ```
 
-Open the URL shown in the terminal (typically `http://localhost:5173`).
+- **Web** — http://localhost:3000/
+- **API** — http://localhost:3001/api
+
+`npm run dev` starts both. Next.js rewrites `/api/*` to the Express server.
+
+### Run separately
+
+```bash
+npm run dev:web      # Next.js only (port 3000)
+npm run dev:server   # Express API (port 3001)
+```
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Next.js + API |
+| `npm run build` | Production Next.js build |
+| `npm run start` | Serve production build |
+| `npm run lint` | ESLint |
 
 ## Project structure
 
-- `src/data/` — mock catalog and day-level seed data
-- `src/utils/periods.ts` — aggregation and period keys
-- `src/constants/forecastHorizon.ts` — 5-week horizon helpers
-- `src/utils/forecastEdit.ts` — forecast-only edits with proration
-- `src/hooks/usePlannerData.ts` — application state
-- `src/components/` — UI modules
-
-Mock data is generated in-browser; replace `generateMockDayRecords` and `usePlannerData` with API calls when connecting to a backend.
+```
+src/app/       Next.js App Router (page, layout, globals.css)
+src/components/  UI components
+src/hooks/       Client data hooks
+server/        Express API + persistence
+```

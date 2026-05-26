@@ -14,8 +14,8 @@ interface FilterPanelProps {
   forecastGroups: ForecastGroup[];
   activeForecastGroupId: string | null;
   onActiveForecastGroup: (id: string | null) => void;
-  onAddForecastGroup: (name: string, metricIds: string[]) => void;
-  onRemoveForecastGroup: (id: string) => void;
+  onAddForecastGroup: (name: string, metricIds: string[]) => Promise<void>;
+  onRemoveForecastGroup: (id: string) => Promise<void>;
 }
 
 type SectionKey = 'locations' | 'departments' | 'metrics' | 'forecastGroups';
@@ -100,9 +100,13 @@ export function FilterPanel({
     setCreatingGroup(true);
   };
 
-  const finishCreateGroup = (name: string, ids: string[]) => {
-    onAddForecastGroup(name, ids);
-    setCreatingGroup(false);
+  const finishCreateGroup = async (name: string, ids: string[]) => {
+    try {
+      await onAddForecastGroup(name, ids);
+      setCreatingGroup(false);
+    } catch {
+      /* error surfaced via app status */
+    }
   };
 
   const toggleDetails = (id: string) => {
@@ -234,7 +238,7 @@ export function FilterPanel({
               onToggleDetails={() => toggleDetails(g.id)}
               onRemove={() => {
                 if (detailsGroupId === g.id) setDetailsGroupId(null);
-                onRemoveForecastGroup(g.id);
+                void onRemoveForecastGroup(g.id);
               }}
               removeLabel={`Remove forecast group ${g.name}`}
             />

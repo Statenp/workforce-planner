@@ -10,7 +10,7 @@ interface ForecastEditorProps {
     value: number;
     reason: string;
     periodLabel: string;
-  }) => void;
+  }) => Promise<void>;
 }
 
 function formatEditValue(mode: ForecastEditMode, value: number): string {
@@ -64,13 +64,16 @@ export function ForecastEditor({ period, editLog, onApply }: ForecastEditorProps
   const [reasonError, setReasonError] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
 
+  const [applyError, setApplyError] = useState<string | null>(null);
+
   useEffect(() => {
     setReason('');
     setReasonError(null);
+    setApplyError(null);
     setApplied(false);
   }, [period?.key]);
 
-  const handleApply = () => {
+  const handleApply = async () => {
     if (!period) return;
     const trimmedReason = reason.trim();
     if (!trimmedReason) {
@@ -80,17 +83,22 @@ export function ForecastEditor({ period, editLog, onApply }: ForecastEditorProps
     const num = Number(value);
     if (Number.isNaN(num)) return;
 
-    onApply({
-      scopeKey: period.key,
-      mode,
-      value: num,
-      reason: trimmedReason,
-      periodLabel: period.label,
-    });
-    setReason('');
-    setReasonError(null);
-    setApplied(true);
-    window.setTimeout(() => setApplied(false), 2500);
+    try {
+      setApplyError(null);
+      await onApply({
+        scopeKey: period.key,
+        mode,
+        value: num,
+        reason: trimmedReason,
+        periodLabel: period.label,
+      });
+      setReason('');
+      setReasonError(null);
+      setApplied(true);
+      window.setTimeout(() => setApplied(false), 2500);
+    } catch {
+      setApplyError('Could not save forecast change. Check the API connection.');
+    }
   };
 
   if (!period) {
@@ -149,6 +157,7 @@ export function ForecastEditor({ period, editLog, onApply }: ForecastEditorProps
         />
       </label>
       {reasonError && <p className="forecast-edit-reason-error">{reasonError}</p>}
+      {applyError && <p className="forecast-edit-reason-error">{applyError}</p>}
       <button type="button" className="primary-btn" onClick={handleApply}>
         Apply to forecast
       </button>

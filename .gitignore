@@ -1,4 +1,22 @@
-node_modules
-dist
-*.local
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+
+# vite legacy
+/dist
+
+# server
+/server/data/store.json
+/server/dist
+
+# misc
 .DS_Store
+*.pem
+.env*
+npm-debug.log*
+*.tsbuildinfo

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { addDays, format, parseISO } from 'date-fns';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { format } from 'date-fns';
 import {
   FORECAST_HORIZON_WEEKS,
   getCurrentWeekRange,
@@ -7,7 +7,6 @@ import {
   getTodayString,
   withForecastHorizon,
 } from '../constants/forecastHorizon';
-import { generateMockDayRecords } from '../data/generateMockData';
 import type {
   ChartPoint,
   DayRecord,
@@ -19,39 +18,119 @@ import type {
   SeriesKey,
 } from '../types';
 import {
+  createForecastGroup,
+  deleteForecastGroup,
+  fetchDayRecords,
+  fetchForecastEditLog,
+  fetchForecastGroups,
+  postForecastEdit,
+} from '../services/plannerApi';
+import {
   aggregateToPeriods,
   childGranularity,
   parentGranularity,
   periodBounds,
   periodKey,
 } from '../utils/periods';
-import { editForecast } from '../utils/forecastEdit';
 
-const DEFAULT_FORECAST_GROUPS: ForecastGroup[] = [
-  { id: 'g1', name: 'Sales & Returns', metricIds: ['m1', 'm3'] },
-  { id: 'g2', name: 'Traffic & Volume', metricIds: ['m2', 'm4'] },
-];
+export type DateRangePresetId = 'currentWeek' | 'ytd' | 'forecast5w' | 'custom';
+
+function matchesPreset(
+  start: string,
+  end: string,
+  preset: { start: string; end: string },
+): boolean {
+  return start === preset.start && end === preset.end;
+}
+
+export function detectDateRangePreset(
+  start: string,
+  end: string,
+  presets: {
+    currentWeek: { start: string; end: string };
+    ytd: { start: string; end: string };
+    forecast5w: { start: string; end: string };
+  },
+): DateRangePresetId {
+  if (matchesPreset(start, end, presets.forecast5w)) return 'forecast5w';
+  if (matchesPreset(start, end, presets.currentWeek)) return 'currentWeek';
+  if (matchesPreset(start, end, presets.ytd)) return 'ytd';
+  return 'custom';
+}
 
 function defaultRange() {
   return getCurrentWeekRange();
 }
 
+function recordKey(r: DayRecord): string {
+  return `${r.date}|${r.storeId}|${r.departmentId}|${r.metricId}`;
+}
+
+function mergeRecords(prev: DayRecord[], incoming: DayRecord[]): DayRecord[] {
+  const map = new Map(prev.map((r) => [recordKey(r), r]));
+  for (const r of incoming) map.set(recordKey(r), r);
+  return [...map.values()];
+}
+
 export function usePlannerData() {
   const initialRange = defaultRange();
-  const [dayRecords, setDayRecords] = useState<DayRecord[]>(() =>
-    generateMockDayRecords(initialRange.start, initialRange.end),
-  );
+  const [dayRecords, setDayRecords] = useState<DayRecord[]>([]);
   const [rangeStart, setRangeStart] = useState(initialRange.start);
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
+  const [activeDatePreset, setActiveDatePreset] = useState<DateRangePresetId>('currentWeek');
   const [granularity, setGranularity] = useState<Granularity>('week');
   const [focusPeriodKey, setFocusPeriodKey] = useState<string | null>(null);
   const [storeIds, setStoreIds] = useState<string[]>(['s1', 's2', 's3', 's4', 's5']);
   const [departmentIds, setDepartmentIds] = useState<string[]>(['d1', 'd2', 'd3', 'd4']);
   const [metricIds, setMetricIds] = useState<string[]>(['m1', 'm2']);
-  const [forecastGroups, setForecastGroups] = useState<ForecastGroup[]>(DEFAULT_FORECAST_GROUPS);
+  const [forecastGroups, setForecastGroups] = useState<ForecastGroup[]>([]);
   const [activeForecastGroupId, setActiveForecastGroupId] = useState<string | null>(null);
   const [visibleSeries, setVisibleSeries] = useState<SeriesKey[]>(['forecast', 'actual', 'budget']);
   const [forecastEditLog, setForecastEditLog] = useState<ForecastEditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const forecastHorizonEnd = getForecastHorizonEnd();
+  const today = getTodayString();
+  const dataRangeEnd = useMemo(() => withForecastHorizon(rangeEnd), [rangeEnd]);
+
+  const loadRecordsForRange = useCallback(async (start: string, end: string) => {
+    const records = await fetchDayRecords(start, end);
+    setDayRecords((prev) => mergeRecords(prev, records));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const dataEnd = withForecastHorizon(initialRange.end);
+
+    async function init() {
+      try {
+        setLoading(true);
+        setError(null);
+        const [records, groups, log] = await Promise.all([
+          fetchDayRecords(initialRange.start, dataEnd),
+          fetchForecastGroups(),
+          fetchForecastEditLog(),
+        ]);
+        if (cancelled) return;
+        setDayRecords(records);
+        setForecastGroups(groups);
+        setForecastEditLog(log);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load planner data');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const effectiveMetricIds = useMemo(() => {
     if (!activeForecastGroupId) return metricIds;
@@ -69,11 +148,6 @@ export function usePlannerData() {
       ),
     [dayRecords, storeIds, departmentIds, effectiveMetricIds],
   );
-
-  const forecastHorizonEnd = getForecastHorizonEnd();
-  const today = getTodayString();
-
-  const dataRangeEnd = useMemo(() => withForecastHorizon(rangeEnd), [rangeEnd]);
 
   const displayRange = useMemo(() => {
     if (!focusPeriodKey) {
@@ -98,10 +172,7 @@ export function usePlannerData() {
       };
       for (const metricId of effectiveMetricIds) {
         const slice = filteredRecords.filter(
-          (r) =>
-            r.metricId === metricId &&
-            r.date >= p.start &&
-            r.date <= p.end,
+          (r) => r.metricId === metricId && r.date >= p.start && r.date <= p.end,
         );
         for (const series of visibleSeries) {
           const field = series === 'actualLy' ? 'actualLy' : series;
@@ -113,40 +184,41 @@ export function usePlannerData() {
     });
   }, [periods, filteredRecords, effectiveMetricIds, visibleSeries]);
 
-  const applyDateRange = useCallback((start: string, end: string) => {
-    setRangeStart(start);
-    setRangeEnd(end);
-    setFocusPeriodKey(null);
-    const dataEnd = withForecastHorizon(end);
-    setDayRecords((prev) => {
-      const dates = new Set(prev.map((r) => r.date));
-      let cursor = parseISO(start);
-      const endDate = parseISO(dataEnd);
-      let missing = false;
-      while (cursor <= endDate) {
-        const d = format(cursor, 'yyyy-MM-dd');
-        if (!dates.has(d)) {
-          missing = true;
-          break;
-        }
-        cursor = addDays(cursor, 1);
+  const applyDateRange = useCallback(
+    async (start: string, end: string, presetId?: DateRangePresetId) => {
+      setRangeStart(start);
+      setRangeEnd(end);
+      setFocusPeriodKey(null);
+      const presets = {
+        currentWeek: getCurrentWeekRange(),
+        ytd: {
+          start: format(new Date(new Date().getFullYear(), 0, 1), 'yyyy-MM-dd'),
+          end: getTodayString(),
+        },
+        forecast5w: {
+          start: getTodayString(),
+          end: getForecastHorizonEnd(),
+        },
+      };
+      setActiveDatePreset(presetId ?? detectDateRangePreset(start, end, presets));
+      try {
+        setSyncing(true);
+        setError(null);
+        await loadRecordsForRange(start, withForecastHorizon(end));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load date range');
+      } finally {
+        setSyncing(false);
       }
-      if (!missing) return prev;
-      const extra = generateMockDayRecords(start, dataEnd);
-      const map = new Map(prev.map((r) => [`${r.date}|${r.storeId}|${r.departmentId}|${r.metricId}`, r]));
-      for (const r of extra) {
-        const k = `${r.date}|${r.storeId}|${r.departmentId}|${r.metricId}`;
-        if (!map.has(k)) map.set(k, r);
-      }
-      return [...map.values()];
-    });
-  }, []);
+    },
+    [loadRecordsForRange],
+  );
 
   const drillDown = useCallback(
-    (periodKey: string) => {
+    (periodKeyValue: string) => {
       const child = childGranularity(granularity);
       if (!child) return;
-      setFocusPeriodKey(periodKey);
+      setFocusPeriodKey(periodKeyValue);
       setGranularity(child);
     },
     [granularity],
@@ -169,50 +241,63 @@ export function usePlannerData() {
   }, []);
 
   const updateForecast = useCallback(
-    (
+    async (
       scopeKey: string,
       mode: ForecastEditMode,
       value: number,
       reason: string,
-      periodLabel: string,
+      periodLabelValue: string,
     ) => {
-      setDayRecords((prev) =>
-        editForecast(prev, {
+      try {
+        setSyncing(true);
+        setError(null);
+        const result = await postForecastEdit({
           scopeKey,
           granularity,
           mode,
           value,
+          reason,
+          periodLabel: periodLabelValue,
           storeIds,
           departmentIds,
           metricIds: effectiveMetricIds,
-        }),
-      );
-      setForecastEditLog((log) => [
-        {
-          id: `edit_${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          periodKey: scopeKey,
-          periodLabel,
-          granularity,
-          mode,
-          value,
-          reason,
-        },
-        ...log,
-      ].slice(0, 25));
+          rangeStart,
+          rangeEnd: dataRangeEnd,
+        });
+        setDayRecords((prev) => mergeRecords(prev, result.records));
+        setForecastEditLog(result.editLog);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update forecast');
+        throw err;
+      } finally {
+        setSyncing(false);
+      }
     },
-    [granularity, storeIds, departmentIds, effectiveMetricIds],
+    [granularity, storeIds, departmentIds, effectiveMetricIds, rangeStart, dataRangeEnd],
   );
 
-  const addForecastGroup = useCallback((name: string, ids: string[]) => {
-    const id = `g_${Date.now()}`;
-    setForecastGroups((g) => [...g, { id, name, metricIds: ids }]);
-    setActiveForecastGroupId(id);
+  const addForecastGroup = useCallback(async (name: string, ids: string[]) => {
+    try {
+      setError(null);
+      const group = await createForecastGroup(name, ids);
+      setForecastGroups((g) => [...g, group]);
+      setActiveForecastGroupId(group.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create forecast group');
+      throw err;
+    }
   }, []);
 
-  const removeForecastGroup = useCallback((id: string) => {
-    setForecastGroups((g) => g.filter((x) => x.id !== id));
-    setActiveForecastGroupId((cur) => (cur === id ? null : cur));
+  const removeForecastGroup = useCallback(async (id: string) => {
+    try {
+      setError(null);
+      await deleteForecastGroup(id);
+      setForecastGroups((g) => g.filter((x) => x.id !== id));
+      setActiveForecastGroupId((cur) => (cur === id ? null : cur));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove forecast group');
+      throw err;
+    }
   }, []);
 
   const quickPresets = useMemo(
@@ -259,11 +344,15 @@ export function usePlannerData() {
     addForecastGroup,
     removeForecastGroup,
     quickPresets,
+    activeDatePreset,
     forecastHorizonEnd,
     forecastHorizonWeeks: FORECAST_HORIZON_WEEKS,
     today,
     dataRangeEnd,
     displayRange,
+    loading,
+    error,
+    syncing,
     canDrillUp: Boolean(parentGranularity(granularity) && focusPeriodKey),
     canDrillDown: Boolean(childGranularity(granularity)),
   };
